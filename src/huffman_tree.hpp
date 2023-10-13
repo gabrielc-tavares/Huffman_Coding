@@ -9,6 +9,7 @@
 #include <memory>
 #include <boost/multiprecision/cpp_int.hpp>
 #include "raii_handle.hpp"
+#include "pathmgr.h"
 
 constexpr int ALPHABET_SIZE = UCHAR_MAX + 1;
 
@@ -105,12 +106,21 @@ public:
 		// Temporary array to store frequencies
 		std::array<size_t, ALPHABET_SIZE> freqArr{ 0 };
 
+		// Get original file extension
+		std::string ext = extension(fileName);
+		// Append a space at the end of the extension, which will serve as a 
+		// separator between it and the actual file data in the compressed file
+		ext.push_back(' ');
+
+		// Count frequencies of the characters in the original file extension
+		for (int i = 0; i < ext.size(); i++)
+			freqArr[ext[i]]++;
+
 		// Buffer to read from input file
 		uint8_t buf[BUFFER_SIZE];
 
 		// Read a chunk of data from the input file into the buffer
 		handle.read(reinterpret_cast<char*>(buf), BUFFER_SIZE);
-
 		// Get the number of bytes read in this chunk
 		std::streamsize bytesRead = handle.gcount();
 
@@ -121,7 +131,6 @@ public:
 
 			// Read a chunk of data from the input file into the buffer
 			handle.read(reinterpret_cast<char*>(buf), BUFFER_SIZE);
-
 			// Get the number of bytes read in this chunk
 			bytesRead = handle.gcount();
 		}
@@ -136,9 +145,9 @@ public:
 		// Build leaf nodes
 		for (int i = 0; i < ALPHABET_SIZE; i++) {
 			if (freqArr[i]) {
-				// Map new empty bitset with 'i'
-				EncodedChar_t bitset(0, 0);
-				encodedCharMap.insert({ i, bitset });
+				// Map new empty encoded char with 'i'
+				EncodedChar_t encoded(0, 0);
+				encodedCharMap.insert({ i, encoded });
 
 				// Insert leaf node ordered by frequency
 				std::vector<NodePtr_t>::iterator iter = leaves.begin();
@@ -151,7 +160,7 @@ public:
 			}
 		}
 
-		// Build tree
+		// Build Huffman Tree
 		buildMinHeap();
 	}
 
@@ -178,7 +187,7 @@ public:
 		return encodedCharMap;
 	}
 
-	// Get total number of bytes in the original file
+	// Get total number of bytes in the original file (+ its extension and a ' ')
 	size_t getNumberOfBytes() const {
 		return root->getFrequency();
 	}

@@ -3,41 +3,6 @@
 
 using NodePtr_t = std::shared_ptr<HuffmanTreeNode>;
 
-// Returns 'path' without file extension
-std::string stem(const std::string& path) {
-	std::string stem(path);
-
-	while (!stem.empty()) {
-		if (stem.back() == '.') {
-			stem.pop_back();
-			return stem;
-		}
-		stem.pop_back();
-	}
-	// If the file path doesn't contain an explicit extension, throw an exception
-	throw std::runtime_error("Error: Invalid file path format (extension must be explicit).");
-}
-
-// Returns 'path' file extension (without the '.' preceding extension)
-std::string extension(const std::string& path) {
-	std::string temp(path);
-	std::string ext;
-
-	while (!temp.empty() && temp.back() != '/') {
-		if (temp.back() == '.')
-			return ext;
-
-		ext.insert(ext.begin(), temp.back());
-		temp.pop_back();
-	}
-	// If the file path doesn't contain an explicit extension, throw an exception
-	throw std::runtime_error("Error: Invalid file path format (extension must be explicit).");
-}
-
-bool is_hzip(const std::string& path) {
-	return extension(path) == "hzip";
-}
-
 void zip(const std::string& srcPath) {
 	// Build Huffman Tree
 	HuffmanTree huffTree(srcPath);
@@ -46,6 +11,8 @@ void zip(const std::string& srcPath) {
 	InputFileRAII scopedInputFile(srcPath);
 	std::ifstream& srcHandle = scopedInputFile.get();
 
+	// Compressed file will be created with the same name of the original file
+	// but with a ".hzip" extension
 	std::string destPath = stem(srcPath);
 	destPath += ".hzip";
 
@@ -56,12 +23,6 @@ void zip(const std::string& srcPath) {
 	// Get Huffman Tree leaves
 	std::vector<NodePtr_t> leaves = huffTree.getLeaves();
 
-	// Write original file extension in the output file preceded by its size
-	std::string ext = extension(srcPath);
-	uint8_t extSize = static_cast<uint8_t>(ext.size());
-	destHandle.put(extSize);
-	destHandle.write(ext.c_str(), ext.size());
-
 	// Get number of different characters in the original file and write it on the output file
 	uint8_t uniqueBytes = (uint8_t)leaves.size();
 	destHandle.put(uniqueBytes);
@@ -69,7 +30,7 @@ void zip(const std::string& srcPath) {
 	// Get number of bytes required to store frequencies and write it on the output file
 	uint8_t bytesForFreq = (uint8_t)std::ceil(std::log2((double)(huffTree.getBiggerFrequency())) / 8);
 	destHandle.put(bytesForFreq);
-	
+
 	// Write at the output file each character present in the input file followed by its frequency 
 	for (auto iter = leaves.begin(); iter != leaves.end(); ++iter) {
 		destHandle.put((*iter)->getCharacter());
@@ -87,39 +48,54 @@ void zip(const std::string& srcPath) {
 			destHandle.put(freq);
 		}
 	}
+
+	// Maximum size possible of an encoded character
 	const uint16_t maxSize = 256;
 
 	// Get encoded version of the characters in the input file paired with its original form
 	EncodedCharMap_t encodedCharMap = huffTree.getEncodedCharMap();
 
-	EncodedChar_t destBitset(0, 0), newBitset(0, 0);
+	EncodedChar_t destEncoded(0, 0), newEncoded(0, 0);
 	uint8_t srcBuf[BUFFER_SIZE];
 
+	// Get original file extension (without the '.')
+	std::string srcExt = extension(srcPath);
+
+	// A space will indicate the end of the original file extension
+	srcExt.push_back(' ');
+
+	size_t srcExtLen = srcExt.size();
+
+	// Write original file extension at the beginning of the buffer to be compressed along 
+	// the rest of the data
+	for (int i = 0; i < srcExtLen; i++)
+		srcBuf[i] = static_cast<uint8_t>(srcExt[i]);
+
 	// Read a chunk of data from the input file into the buffer
-	srcHandle.read(reinterpret_cast<char*>(srcBuf), BUFFER_SIZE);
+	srcHandle.read(reinterpret_cast<char*>(srcBuf + srcExtLen), BUFFER_SIZE - srcExtLen);
 
 	// Get the number of bytes read in this chunk
-	std::streamsize bytesRead = srcHandle.gcount();
+	std::streamsize bytesRead = srcHandle.gcount() + srcExtLen;
 
-	while(bytesRead == BUFFER_SIZE) {
+	while (bytesRead == BUFFER_SIZE) {
 		// Compress chunk read
 		for (int i = 0; i < BUFFER_SIZE; i++) {
-			newBitset = encodedCharMap[srcBuf[i]];
-			int free = maxSize - destBitset.second;
+			newEncoded = encodedCharMap[srcBuf[i]];
+			int free = maxSize - destEncoded.second;
 
-			if (free > newBitset.second) {
-				int shl = free - newBitset.second;
+			if (free > newEncoded.second) {
+				int shl = free - newEncoded.second;
 
-				newBitset.first <<= shl;
-				destBitset.first |= newBitset.first;
-				destBitset.second += newBitset.second;
+				newEncoded.first <<= shl;
+				destEncoded.first |= newEncoded.first;
+				destEncoded.second += newEncoded.second;
 			}
 			else {
-				EncodedChar_t auxBitset(newBitset);
-				int shr = newBitset.second - free;
+				EncodedChar_t auxBitset(newEncoded);
+				int shr = newEncoded.second - free;
 
 				auxBitset.first >>= shr;
-				destBitset.first |= auxBitset.first;
+				destEncoded.first |= auxBitset.first;
 
 				// Write 'outBitset' in output file
 				std::vector<uint8_t> destBitsetVec;
@@ -127,9 +103,9 @@ void zip(const std::string& srcPath) {
 
 				for (int k = 0; k < maxSize / CHAR_BIT; k++) {
 					tempBigInt = UCHAR_MAX;
-					tempBigInt &= destBitset.first;
+					tempBigInt &= destEncoded.first;
 					destBitsetVec.emplace_back(tempBigInt.convert_to<uint8_t>());
-					destBitset.first >>= CHAR_BIT;
+					destEncoded.first >>= CHAR_BIT;
 				}
 				while (!destBitsetVec.empty()) {
 					uint8_t destByte = destBitsetVec.back();
@@ -137,14 +113,13 @@ void zip(const std::string& srcPath) {
 					destBitsetVec.pop_back();
 				}
 
-				newBitset.first <<= (maxSize - shr);
-				destBitset.first = newBitset.first;
-				destBitset.second = shr;
+				newEncoded.first <<= (maxSize - shr);
+				destEncoded.first = newEncoded.first;
+				destEncoded.second = shr;
 			}
 		}
 		// Read a chunk of data from the input file into the buffer
 		srcHandle.read(reinterpret_cast<char*>(srcBuf), BUFFER_SIZE);
-
 		// Get the number of bytes read in this chunk
 		bytesRead = srcHandle.gcount();
 	}
@@ -153,67 +128,68 @@ void zip(const std::string& srcPath) {
 	if (bytesRead > 0) {
 		// Compress chunk read
 		for (int i = 0; i < bytesRead; i++) {
-			newBitset = encodedCharMap[srcBuf[i]];
-			int free = maxSize - destBitset.second;
+			newEncoded = encodedCharMap[srcBuf[i]];
+			int free = maxSize - destEncoded.second;
 
-			if (free > newBitset.second) {
-				int shl = free - newBitset.second;
+			if (free > newEncoded.second) {
+				int shl = free - newEncoded.second;
 
-				newBitset.first <<= shl;
-				destBitset.first |= newBitset.first;
-				destBitset.second += newBitset.second;
+				newEncoded.first <<= shl;
+				destEncoded.first |= newEncoded.first;
+				destEncoded.second += newEncoded.second;
 			}
 			else {
-				EncodedChar_t auxBitset(newBitset);
-				int shr = newBitset.second - free;
+				EncodedChar_t auxBitset(newEncoded);
+				int shr = newEncoded.second - free;
 
 				auxBitset.first >>= shr;
-				destBitset.first |= auxBitset.first;
+				destEncoded.first |= auxBitset.first;
 
 				// Write 'outBitset' in output file
-				std::vector<uint8_t> destBitsetVec;
+				std::vector<uint8_t> destEncodedVec;
 				uint256_t tempBigInt;
 
 				for (int k = 0; k < maxSize / CHAR_BIT; k++) {
 					tempBigInt = UCHAR_MAX;
-					tempBigInt &= destBitset.first;
-					destBitsetVec.emplace_back(tempBigInt.convert_to<uint8_t>());
-					destBitset.first >>= CHAR_BIT;
+					tempBigInt &= destEncoded.first;
+					destEncodedVec.emplace_back(tempBigInt.convert_to<uint8_t>());
+					destEncoded.first >>= CHAR_BIT;
 				}
-				while (!destBitsetVec.empty()) {
-					uint8_t destByte = destBitsetVec.back();
+				while (!destEncodedVec.empty()) {
+					uint8_t destByte = destEncodedVec.back();
 					destHandle.put(destByte);
-					destBitsetVec.pop_back();
+					destEncodedVec.pop_back();
 				}
 
-				newBitset.first <<= (maxSize - shr);
-				destBitset.first = newBitset.first;
-				destBitset.second = shr;
+				newEncoded.first <<= (maxSize - shr);
+				destEncoded.first = newEncoded.first;
+				destEncoded.second = shr;
 			}
 		}
 	}
 
-	if (destBitset.second > 0) {
+	if (destEncoded.second > 0) {
 		// There is still bits from the encoded character to write on the output file
-		int bitsLeft = maxSize - destBitset.second;
-		destBitset.first >>= bitsLeft;
+		int bitsLeft = maxSize - destEncoded.second;
+		destEncoded.first >>= bitsLeft;
 
-		std::vector<uint8_t> destBitsetVec;
+		std::vector<uint8_t> destEncodedVec;
 		uint256_t tempBigInt;
 
-		for (int j = 0; j < (destBitset.second + CHAR_BIT) / CHAR_BIT; j++) {
+		for (int j = 0; j < (destEncoded.second + CHAR_BIT) / CHAR_BIT; j++) {
 			tempBigInt = UCHAR_MAX;
-			tempBigInt &= destBitset.first;
-			destBitsetVec.emplace_back(tempBigInt.convert_to<uint8_t>());
-			destBitset.first >>= CHAR_BIT;
+			tempBigInt &= destEncoded.first;
+			destEncodedVec.emplace_back(tempBigInt.convert_to<uint8_t>());
+			destEncoded.first >>= CHAR_BIT;
 		}
-		while (!destBitsetVec.empty()) {
-			uint8_t destByte = destBitsetVec.back();
+		while (!destEncodedVec.empty()) {
+			uint8_t destByte = destEncodedVec.back();
 			destHandle.put(destByte);
-			destBitsetVec.pop_back();
+			destEncodedVec.pop_back();
 		}
 	}
 
+	// File compression ended with no errors
 	std::cout << "File compressed successfully." << std::endl;
 }
 
@@ -222,22 +198,10 @@ void unzip(const std::string& srcPath) {
 	InputFileRAII scopedInputFile(srcPath);
 	std::ifstream& srcHandle = scopedInputFile.get();
 
-	// Set destiny file path
-	std::string destPath = stem(srcPath);
-	destPath += '.';
-
-	uint8_t extSize;
-	srcHandle.read(reinterpret_cast<char*>(&extSize), 1);
-
-	// Get original file extension
-	char* ext = new char[extSize + 1];
-	srcHandle.read(ext, extSize);
-	ext[extSize] = '\0';
-	destPath += ext;
-
-	// Create RAII handle for output file
-	OutputFileRAII scopedOutputFile(destPath);
-	std::ofstream& destHandle = scopedOutputFile.get();
+	// Decompressed file will be created with the same name of the compressed file and 
+	// with the original file extension (which is compressed along with the rest of the data)
+	std::string destPath(stem(srcPath));
+	destPath.push_back('.');
 
 	// Get number of different characters of the original file
 	uint8_t uniqueBytes;
@@ -253,13 +217,11 @@ void unzip(const std::string& srcPath) {
 	// Read information required to restore the original file data
 	srcHandle.read(reinterpret_cast<char*>(serialInfoBuf), serialInfoSize);
 
-	std::vector<NodePtr_t> leaves;
-	uint8_t charBuf;
-
 	// Get characters of the original file along with its frequencies
+	std::vector<NodePtr_t> leaves;
 	for (int i = 0; i < uniqueBytes; i++) {
 		size_t index = i * (bytesForFreq + 1);
-		charBuf = serialInfoBuf[index];
+		uint8_t charBuf = serialInfoBuf[index];
 
 		size_t freq = static_cast<size_t>(serialInfoBuf[index + 1]);
 
@@ -277,51 +239,105 @@ void unzip(const std::string& srcPath) {
 	// Get Huffman Tree root
 	NodePtr_t nodePtr = huffTree.getRoot();
 	// Get number of encoded "bytes" of the compressed file
-	size_t encodedBytes = nodePtr->getFrequency();
+	size_t encodedBytes = huffTree.getNumberOfBytes();
 
 	// Buffer to read from input file
 	uint8_t srcBuf[BUFFER_SIZE];
+
+	// Read first chunk of data (which contains the original fle extension at the beginning)
+	srcHandle.read(reinterpret_cast<char*>(srcBuf), BUFFER_SIZE);
+	// Get the number of bytes read in this chunk
+	std::streamsize bytesRead = srcHandle.gcount();
+
 	size_t encodedBytesRead = 0;
-	std::streamsize bytesRead;
+	size_t i = 0;
 
-	do {
-		// Read a chunk of data from the input file into the buffer
-		srcHandle.read(reinterpret_cast<char*>(srcBuf), BUFFER_SIZE);
+	while (bytesRead > 0) {
+		uint8_t srcByte = srcBuf[i];
+		uint8_t mask = 0x80;
 
-		// Get the number of bytes read in this chunk
-		bytesRead = srcHandle.gcount();
+		do {
+			if ((srcByte & mask) == 0)
+				nodePtr = nodePtr->getLeft();
+			else
+				nodePtr = nodePtr->getRight();
 
-		for (int i = 0; i < bytesRead; i++) {
-			uint8_t srcByte = srcBuf[i];
-			uint8_t mask = 0x80;
+			if (nodePtr->isLeaf()) {
+				// Get character from leaf node
+				uint8_t destByte = nodePtr->getCharacter();
+				encodedBytesRead++;
 
-			do {
-				if ((srcByte & mask) == 0)
-					nodePtr = nodePtr->getLeft();
-				else
-					nodePtr = nodePtr->getRight();
+				// Make 'ptrNode' point to the root again
+				nodePtr = huffTree.getRoot();
 
-				if (nodePtr->isLeaf()) {
-					// Get character from leaf node
-					uint8_t destByte = nodePtr->getCharacter();
+				// If the decoded character is a space, the extension has been fully read
+				// Start restoring the original file content from the compressed file
+				if (destByte == 32) {
+					// Create RAII handle for output file
+					OutputFileRAII scopedOutputFile(destPath);
+					std::ofstream& destHandle = scopedOutputFile.get();
 
-					// Write character in the decompressed file
-					destHandle.put(destByte);
-					encodedBytesRead++;
-
-					// Check if end of file was reached
+					// Check if end of file was reached (original file was empty)
 					if (encodedBytesRead == encodedBytes) {
-						// Input file was completely decompressed
+						// Original file was completely restored
 						std::cout << "File decompressed successfully." << std::endl;
 						return;
 					}
-					// Make 'ptrNode' point to the root again
-					nodePtr = huffTree.getRoot();
+					// Continue reading from current byte
+					mask >>= 1;
+
+					// Decompress data
+					do {
+						while (mask != 0) {
+							if ((srcByte & mask) == 0)
+								nodePtr = nodePtr->getLeft();
+							else
+								nodePtr = nodePtr->getRight();
+
+							if (nodePtr->isLeaf()) {
+								// Get character from leaf node
+								destByte = nodePtr->getCharacter();
+
+								// Write character in the decompressed file
+								destHandle.put(destByte);
+								encodedBytesRead++;
+
+								// Check if end of file was reached
+								if (encodedBytesRead == encodedBytes) {
+									// Original file was completely restored
+									std::cout << "File decompressed successfully." << std::endl;
+									return;
+								}
+								// Make 'ptrNode' point to the root again
+								nodePtr = huffTree.getRoot();
+							}
+							mask >>= 1;
+						}
+						mask = 0x80;
+						i++;
+						if (i == bytesRead) {
+							i = 0;
+							// Read a chunk of data from the input file into the buffer
+							srcHandle.read(reinterpret_cast<char*>(srcBuf), BUFFER_SIZE);
+							// Get the number of bytes read in this chunk
+							bytesRead = srcHandle.gcount();
+							if (bytesRead == 0)
+								break;
+						}
+						srcByte = srcBuf[i];
+					} while (true);
+
+					throw std::runtime_error("Error: File could not be decompressed correctly.");
 				}
-				mask >>= 1;
-			} while (mask != 0);
-		}
-	} while (bytesRead > 0);
+				// Otherwise, append the decoded character in the destiny path
+				else {
+					destPath += static_cast<char>(destByte);
+				}
+			}
+			mask >>= 1;
+		} while (mask != 0);
+		i++;
+	}
 
 	throw std::runtime_error("Error: File could not be decompressed correctly.");
 }

@@ -1,4 +1,5 @@
 ﻿#include "hzip.h"
+#include <filesystem>
 #include <cmath>
 
 using NodePtr_t = std::shared_ptr<HuffmanTreeNode>;
@@ -11,8 +12,8 @@ void zip(const std::string& srcPath) {
 	InputFileRAII scopedInputFile(srcPath);
 	std::ifstream& srcHandle = scopedInputFile.get();
 
-	// Compressed file will be created with the same name of the original file
-	// but with a ".hzip" extension
+	// Compressed file will be created in the same directory and with the 
+	// same name of the original file, but with a ".hzip" extension
 	std::string destPath = stem(srcPath);
 	destPath += ".hzip";
 
@@ -48,7 +49,6 @@ void zip(const std::string& srcPath) {
 			destHandle.put(freq);
 		}
 	}
-
 	// Maximum size possible of an encoded character
 	const uint16_t maxSize = 256;
 
@@ -169,14 +169,14 @@ void zip(const std::string& srcPath) {
 	}
 
 	if (destEncoded.second > 0) {
-		// There is still bits from the encoded character to write on the output file
+		// Some bits have not been written to the destination file yet
 		int bitsLeft = maxSize - destEncoded.second;
 		destEncoded.first >>= bitsLeft;
 
 		std::vector<uint8_t> destEncodedVec;
 		uint256_t tempBigInt;
 
-		for (int j = 0; j < (destEncoded.second + CHAR_BIT) / CHAR_BIT; j++) {
+		for (int j = 0; j < (destEncoded.second + (destEncoded.second % CHAR_BIT)) / CHAR_BIT; j++) {
 			tempBigInt = UCHAR_MAX;
 			tempBigInt &= destEncoded.first;
 			destEncodedVec.emplace_back(tempBigInt.convert_to<uint8_t>());

@@ -2,6 +2,7 @@
 
 int main(int argc, char** argv) {
 	std::string srcPath;
+
 	// Check if the correct number of arguments has been passed
 	if (argc == 2) {
 		srcPath = argv[1];

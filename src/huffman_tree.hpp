@@ -13,11 +13,10 @@
 
 constexpr int ALPHABET_SIZE = UCHAR_MAX + 1;
 
-using uint256_t = boost::multiprecision::uint256_t;
+using boost::multiprecision::uint256_t;
 
 // Using (bitstream, numberOfBits) pair to store encoded characters
 using EncodedChar_t = std::pair<uint256_t, uint16_t>;
-
 // Map each encoded character to its original form
 using EncodedCharMap_t = std::unordered_map<uint8_t, EncodedChar_t>;
 
@@ -113,8 +112,8 @@ public:
 		ext.push_back(' ');
 
 		// Count frequencies of the characters in the original file extension
-		for (int i = 0; i < ext.size(); i++)
-			freqArr[ext[i]]++;
+		for (char c : ext)
+			freqArr[c]++;
 
 		// Buffer to read from input file
 		uint8_t buf[BUFFER_SIZE];
@@ -124,9 +123,9 @@ public:
 		// Get the number of bytes read in this chunk
 		std::streamsize bytesRead = handle.gcount();
 
-		while (bytesRead == BUFFER_SIZE) {
+		while (bytesRead > 0) {
 			// Count frequencies of the characters in this chunk
-			for (int i = 0; i < BUFFER_SIZE; i++)
+			for (int i = 0; i < bytesRead; i++)
 				freqArr[buf[i]]++;
 
 			// Read a chunk of data from the input file into the buffer
@@ -135,29 +134,21 @@ public:
 			bytesRead = handle.gcount();
 		}
 		
-		// If the number of bytes in a chunk is < BUFFER_SIZE and > 0
-		if (bytesRead > 0) {
-			// Count frequencies of the characters in this chunk
-			for (int i = 0; i < bytesRead; i++)
-				freqArr[buf[i]]++;
-		}
-
-		// Build leaf nodes
+		// Build leaf nodes with all characters whose frequency is > 0
 		for (int i = 0; i < ALPHABET_SIZE; i++) {
-			if (freqArr[i]) {
-				// Map new empty encoded char with 'i'
-				EncodedChar_t encoded(0, 0);
-				encodedCharMap.insert({ i, encoded });
+			if (freqArr[i] == 0)
+				continue;
+			
+			// Map new empty encoded char with 'i'
+			EncodedChar_t encoded(0, 0);
+			encodedCharMap.insert({ i, encoded });
 
-				// Insert leaf node ordered by frequency
-				std::vector<NodePtr_t>::iterator iter = leaves.begin();
+			// Insert leaf node ordered by frequency
+			std::vector<NodePtr_t>::iterator iter = leaves.begin();
+			while (iter < leaves.end() && (*iter)->getFrequency() > freqArr[i])
+				iter++;
 
-				while (iter < leaves.end() && (*iter)->getFrequency() > freqArr[i])
-					iter++;
-
-				NodePtr_t newNodePtr = std::make_shared<HuffmanTreeNode>(HuffmanTreeNode((uint8_t)i, freqArr[i]));
-				leaves.emplace(iter, newNodePtr);
-			}
+			leaves.emplace(iter, std::make_shared<HuffmanTreeNode>(HuffmanTreeNode(static_cast<uint8_t>(i), freqArr[i])));
 		}
 
 		// Build Huffman Tree
@@ -210,7 +201,8 @@ private:
 	void buildBitsets(EncodedChar_t bitset, NodePtr_t nodePtr) {
 		if (nodePtr->isLeaf()) {
 			// Leaf node: Assign bitset mapping
-			encodedCharMap[nodePtr->getCharacter()] = bitset;
+			encodedCharMap[nodePtr->getCharacter()].first = bitset.first;
+			encodedCharMap[nodePtr->getCharacter()].second = bitset.second;
 		}
 		else {
 			// Internal node: Traverse left and right subtrees
@@ -247,7 +239,6 @@ private:
 			NodePtr_t newInternal = std::make_shared<HuffmanTreeNode>(HuffmanTreeNode(right, left));
 
 			std::vector<NodePtr_t>::iterator iter = leavesTemp.begin();
-
 			while (iter < leavesTemp.end() && (*iter)->getFrequency() > newInternal->getFrequency())
 				iter++;
 

@@ -5,7 +5,7 @@
 #include <string>
 
 // Buffer for input/output files
-constexpr int BUFFER_SIZE = 0xFFF;
+constexpr int BUFFER_SIZE = 1024;
 
 class InputFileRAII {
 public:

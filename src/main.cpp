@@ -3,6 +3,12 @@
 int main(int argc, char** argv) {
 	std::string srcPath;
 
+	srcPath = "./../../../../test/frankenstein.txt";
+	zip(srcPath);
+	srcPath = "./../../../../test/frankenstein.hzip";
+	unzip(srcPath);
+
+	/*
 	// Check if the correct number of arguments has been passed
 	if (argc == 2) {
 		srcPath = argv[1];
@@ -27,6 +33,7 @@ int main(int argc, char** argv) {
 		// ".hzip" file, which will be created in the same directory as the input file.
 		zip(srcPath);
 	}
+	*/
 
 	return 0;
 }

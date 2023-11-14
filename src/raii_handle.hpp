@@ -9,7 +9,8 @@ constexpr int BUFFER_SIZE = 1024;
 
 class InputFileRAII {
 public:
-	InputFileRAII(const std::string& filename) : file(filename, std::ios::binary | std::ios::in) {
+	InputFileRAII(const std::string& filename) 
+		: file(filename, std::ios::binary | std::ios::in) {
 		if (!file.is_open()) {
 			throw std::runtime_error("Failed to open file: " + filename);
 		}
@@ -39,7 +40,8 @@ private:
 
 class OutputFileRAII {
 public:
-	OutputFileRAII(const std::string& filename) : file(filename, std::ios::binary | std::ios::out) {
+	OutputFileRAII(const std::string& filename) 
+		: file(filename, std::ios::binary | std::ios::out) {
 		if (!file.is_open()) {
 			throw std::runtime_error("Failed to open file: " + filename);
 		}

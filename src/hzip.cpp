@@ -30,6 +30,7 @@ void zip(const std::string& srcPath) {
 	// written at the beginning of the compressed file
 	size_t metadataSize = (size_t)uniqueBytes * (bytesForFreq + 1) + 2;
 	uint8_t* metadata = new uint8_t[metadataSize];
+
 	metadata[0] = uniqueBytes;
 	metadata[1] = bytesForFreq;
 
@@ -171,18 +172,11 @@ void unzip(const std::string& srcPath) {
 	}
 	delete[] metadataBuf;
 
-	// Build Huffman Tree from leaf nodes
-	HuffmanTree huffTree(leaves);
-
-	// Get Huffman Tree root
-	NodePtr nodePtr = huffTree.getRoot();
-
-	// Get number of encoded characters of the compressed file
-	size_t encodedBytes = huffTree.getNumberOfBytes();
-
-	// Buffer to read from input file
-	uint8_t srcBuf[BUFFER_SIZE];
+	HuffmanTree huffTree(leaves); // Build Huffman Tree from leaf nodes
+	NodePtr nodePtr = huffTree.getRoot(); // Get Huffman Tree root
+	size_t encodedBytes = huffTree.getNumberOfBytes(); // Number of encoded bytes in the zipped file
 	size_t encodedBytesRead = 0, i = 0;
+	uint8_t srcBuf[BUFFER_SIZE]; // Buffer to read from input file
 
 	// Read first chunk of data (which contains the original fle extension at the beginning)
 	srcHandle.read(reinterpret_cast<char*>(srcBuf), BUFFER_SIZE);
@@ -194,10 +188,11 @@ void unzip(const std::string& srcPath) {
 		uint8_t mask = 0x80;
 
 		do {
-			if ((srcByte & mask) == 0)
+			if ((srcByte & mask) == 0) {
 				nodePtr = nodePtr->getLeft();
-			else
+			} else {
 				nodePtr = nodePtr->getRight();
+			}
 
 			if (nodePtr->isLeaf()) {
 				// Get character from leaf node
@@ -216,20 +211,18 @@ void unzip(const std::string& srcPath) {
 
 					// Check if end of file was reached (original file was empty)
 					if (encodedBytesRead == encodedBytes) {
-						// Original file was completely restored
 						std::cout << "File decompressed successfully." << std::endl;
 						return;
 					}
-					// Continue reading from current byte
-					mask >>= 1;
+					mask >>= 1; // Continue reading from current byte
 
-					// Decompress data
 					do {
 						while (mask != 0) {
-							if ((srcByte & mask) == 0)
+							if ((srcByte & mask) == 0) {
 								nodePtr = nodePtr->getLeft();
-							else
+							} else {
 								nodePtr = nodePtr->getRight();
+							}
 
 							if (nodePtr->isLeaf()) {
 								// Get character from leaf node
@@ -241,7 +234,6 @@ void unzip(const std::string& srcPath) {
 
 								// Check if end of file was reached
 								if (encodedBytesRead == encodedBytes) {
-									// Original file was completely restored
 									std::cout << "File decompressed successfully." << std::endl;
 									return;
 								}
@@ -260,17 +252,16 @@ void unzip(const std::string& srcPath) {
 							// Get the number of bytes read in this chunk
 							bytesRead = srcHandle.gcount();
 							// Stop decompression process if no bytes were read
-							if (bytesRead == 0)
-								break;
+							if (bytesRead == 0) break;
 						}
 						srcByte = srcBuf[i];
 					} while (true);
 
 					throw std::runtime_error("Error: File could not be decompressed correctly.");
-				}
-				// Otherwise, append the decoded character in the destiny path
-				else 
+				} else {
+					// Otherwise, append the decoded character in the destiny path
 					destPath += static_cast<char>(destByte);
+				}
 			}
 			mask >>= 1;
 		} while (mask != 0);

@@ -3,22 +3,14 @@
 int main(int argc, char** argv) {
 	std::string srcPath;
 
-	srcPath = "./../../../../test/frankenstein.txt";
-	zip(srcPath);
-	srcPath = "./../../../../test/frankenstein.hzip";
-	unzip(srcPath);
-
-	/*
 	// Check if the correct number of arguments has been passed
 	if (argc == 2) {
 		srcPath = argv[1];
-	}
-	else if (argc == 1) {
+	} else if (argc == 1) {
 		// If the user didn't provided a file path, ask them to do it
 		std::cout << "Enter the file that you want to compress or decompress:" << std::endl;
 		std::cin >> srcPath;
-	}
-	else {
+	} else {
 		throw std::runtime_error("Error: Too many arguments.");
 	}
 
@@ -26,14 +18,22 @@ int main(int argc, char** argv) {
 	if (is_hzip(srcPath)) {
 		// If the input file has a ".hzip" extension, it will be decompressed. The decompressed
 		// file will be created in the same directory as the input file.
-		unzip(srcPath);
-	}
-	else {
+		try {
+			unzip(srcPath);
+		} catch (std::runtime_error& e) {
+			std::cout << "Error while decompressing file: " << e.what() << std::endl;
+			throw;
+		}
+	} else {
 		// If the input file doesn't have a ".hzip" extention, it will be compressed into a 
 		// ".hzip" file, which will be created in the same directory as the input file.
-		zip(srcPath);
+		try {
+			zip(srcPath);
+		} catch (std::runtime_error& e) {
+			std::cout << "Error while compressing file: " << e.what() << std::endl;
+			throw;
+		}
 	}
-	*/
 
 	return 0;
 }

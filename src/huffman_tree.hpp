@@ -112,12 +112,11 @@ public:
 		// file content by being placed before it and separated from it with a space).
 		std::string ext = extension(srcPath) + ' ';
 
-		for (char c : ext)
+		// Count characters in the source file extension
+		for (char c : ext) 
 			freqArr[c]++;
-
-		// Buffer to read from the source file
-		uint8_t buf[BUFFER_SIZE];
-
+		
+		uint8_t buf[BUFFER_SIZE]; // Buffer to read from the source file
 		do {
 			// Read a chunk of data from the source file
 			handle.read(reinterpret_cast<char*>(buf), BUFFER_SIZE);
@@ -125,12 +124,12 @@ public:
 			std::streamsize bytesRead = handle.gcount();
 
 			// If no bytes were read, break loop
-			if (bytesRead == 0)
-				break;
+			if (bytesRead == 0) break;
 
 			// Count the frequencies of the bytes in this chunk
-			for (int i = 0; i < bytesRead; i++)
+			for (int i = 0; i < bytesRead; i++) {
 				freqArr[buf[i]]++;
+			}
 		} while (true);
 
 		// Build tree leaves of the HuffmanTree with all bytes whose frequencies are > 0
@@ -143,9 +142,9 @@ public:
 
 			// Insert new node ordered by frequency
 			std::vector<std::shared_ptr<Node>>::iterator iter = leaves.begin();
-			while (iter < leaves.end() && (*iter)->getFrequency() > freqArr[i])
+			while (iter < leaves.end() && (*iter)->getFrequency() > freqArr[i]) {
 				iter++;
-
+			}
 			leaves.insert(iter, std::make_shared<Node>(Node(static_cast<uint8_t>(i), freqArr[i])));
 		}
 		buildMinHeap();
@@ -227,9 +226,9 @@ private:
 
 			// Insert new internal node ordered in the vector
 			std::vector<NodePtr>::iterator iter = temp.begin();
-			while (iter < temp.end() && (*iter)->getFrequency() > newInternal->getFrequency())
+			while (iter < temp.end() && (*iter)->getFrequency() > newInternal->getFrequency()) {
 				iter++;
-
+			}
 			temp.insert(iter, newInternal);
 		}
 		root = temp.front();

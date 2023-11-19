@@ -3,7 +3,7 @@
 #include "huffman_tree.hpp"
 
 // Compress file
-void zip(const std::string& srcPath);
+void zip(const std::string& srcFilePath);
 
 // Decompress file
-void unzip(const std::string& srcPath);
+void unzip(const std::string& srcFilePath);

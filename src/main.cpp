@@ -11,7 +11,8 @@ int main(int argc, char** argv) {
 		std::cout << "Enter the file that you want to compress or decompress:" << std::endl;
 		std::cin >> srcPath;
 	} else {
-		throw std::runtime_error("Error: Too many arguments.");
+		std::cerr << "Error: Too many arguments" << std::endl;
+		return 1;
 	}
 
 	// Check if input file must be compressed or decompressed
@@ -20,20 +21,19 @@ int main(int argc, char** argv) {
 		// file will be created in the same directory as the input file.
 		try {
 			unzip(srcPath);
-		} catch (std::runtime_error& e) {
-			std::cout << "Error while decompressing file: " << e.what() << std::endl;
-			throw;
+		} catch (std::exception& e) {
+			std::cerr << e.what() << std::endl;
+			return 2;
 		}
 	} else {
 		// If the input file doesn't have a ".hzip" extention, it will be compressed into a 
 		// ".hzip" file, which will be created in the same directory as the input file.
 		try {
 			zip(srcPath);
-		} catch (std::runtime_error& e) {
-			std::cout << "Error while compressing file: " << e.what() << std::endl;
-			throw;
+		} catch (std::exception& e) {
+			std::cerr << e.what() << std::endl;
+			return 3;
 		}
 	}
-
 	return 0;
 }

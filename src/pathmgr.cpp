@@ -5,7 +5,7 @@ bool is_hzip(const std::string& path) {
 	return extension(path) == "hzip";
 }
 
-std::string stem(const std::string& path) {
+std::string removeExtension(const std::string& path) {
 	std::string stem(path);
 
 	while (!stem.empty()) {

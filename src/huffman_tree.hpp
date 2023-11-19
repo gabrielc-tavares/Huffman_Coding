@@ -3,237 +3,219 @@
 #include <vector>
 #include <array>
 #include <unordered_map>
-#include <utility>
-#include <cstdint>
 #include <optional>
 #include <memory>
-#include <boost/multiprecision/cpp_int.hpp>
 #include "raii_handle.hpp"
 #include "pathmgr.h"
 
 constexpr int ALPHABET_SIZE = 256;
 
-using boost::multiprecision::uint256_t;
+using Codeword = std::vector<uint8_t>;
 
-// Represents the encoding of a byte value
-class HuffmanEncoded {
+// Represents the encoded version of some byte
+class EncodedByte {
 public:
-	HuffmanEncoded(const uint256_t& _encodedByte = 0, uint16_t _bitCount = 0)
-		: encodedByte(_encodedByte), bitCount(_bitCount) {}
-
-	void operator=(const HuffmanEncoded& obj) {
-		encodedByte = obj.encodedByte;
-		bitCount = obj.bitCount;
+	EncodedByte()
+		: numberOfBits(0) {
+		codeword.emplace_back(0);
 	}
 
-	uint256_t encodedByte;
-	uint16_t bitCount;
+	EncodedByte(const Codeword& _codeword, int _numberOfBits)
+		: codeword(_codeword), numberOfBits(_numberOfBits) {}
+
+	void operator=(const EncodedByte& obj) {
+		copyCodeword(obj.codeword);
+		numberOfBits = obj.numberOfBits;
+	}
+
+	Codeword codeword;
+	int numberOfBits;
+
+private:
+	void copyCodeword(Codeword _codeword) {
+		codeword.swap(_codeword);
+	}
 };
 
-class Node {
+class HuffmanTreeNode;
+using HuffmanTreeNodePtr = std::shared_ptr<HuffmanTreeNode>;
+
+class HuffmanTreeNode {
 public:
-	Node(size_t _frequency = 0) 
+	HuffmanTreeNode(size_t _frequency = 0)
 		: frequency(_frequency) {}
 
-	Node(uint8_t _originalByte, size_t _frequency = 0) 
+	// Leaf node constructor
+	HuffmanTreeNode(uint8_t _originalByte, size_t _frequency = 0)
 		: originalByte(_originalByte), frequency(_frequency) {}
 
-	Node(std::shared_ptr<Node> _left, std::shared_ptr<Node> _right) 
+	// Internal node constructor
+	HuffmanTreeNode(HuffmanTreeNodePtr _left, HuffmanTreeNodePtr _right)
 		: left(_left), right(_right) {
-		if (!left || !right) 
-			throw std::runtime_error("Internal node must have exactly 2 child nodes.");
+		if (!left || !right) {
+			throw std::invalid_argument("Trying to assign nullptr to a child node of an internal Huffman Tree node");
+		}
 		frequency = left->frequency + right->frequency;
 	}
 
-	size_t getFrequency() const {
-		return frequency;
-	}
-
-	void setFrequency(size_t _frequency) {
-		frequency = _frequency;
-	}
+	size_t getFrequency() const { return frequency; }
+	size_t setFrequency(size_t _frequency) { frequency = _frequency; }
 
 	uint8_t getOriginalByte() const {
-		if (!originalByte.has_value()) 
-			throw std::runtime_error("Trying to use 'getOriginalByte' method in a node with unsettled 'originalByte' atribute.");
+		if (!originalByte.has_value()) {
+			throw std::logic_error("Trying to get unsettled originalByte from a Huffman Tree node");
+		}
 		return originalByte.value();
 	}
-
 	void setOriginalByte(uint8_t _originalByte) {
-		if (left || right)
-			throw std::runtime_error("Trying to use 'setOriginalByte' method in an internal node.");
+		if (left || right) {
+			throw std::logic_error("Trying to set originalByte attribute for an internal Huffman Tree node");
+		}
 		originalByte = _originalByte;
 	}
 
-	// Get left child node
-	std::shared_ptr<Node> getLeft() const {
-		return left;
-	}
-
-	// Get right child node
-	std::shared_ptr<Node> getRight() const {
-		return right;
-	}
-
-	void setSubtrees(std::shared_ptr<Node> _left, std::shared_ptr<Node> _right) {
-		if (originalByte.has_value())
-			throw std::runtime_error("Trying to use 'setSubtrees' method in a leaf node.");
-		if (!_left || !_right) 
-			throw std::runtime_error("Internal node must have exactly 2 child nodes.");
+	HuffmanTreeNodePtr getLeft() const { return left; }
+	HuffmanTreeNodePtr getRight() const { return right; }
+	void setSubtrees(HuffmanTreeNodePtr _left, HuffmanTreeNodePtr _right) {
+		if (originalByte.has_value()) {
+			throw std::logic_error("Trying to set child nodes for a leaf Huffman Tree node");
+		}
+		if (!left || !right) {
+			throw std::invalid_argument("Trying to assign nullptr to a child node of an internal Huffman Tree node");
+		}
 		left = _left;
 		right = _right;
 		frequency = left->frequency + right->frequency;
 	}
 
-	bool isLeaf() const {
-		return !left && !right && originalByte.has_value();
-	}
+	bool isLeaf() const { return originalByte.has_value(); }
 
 private:
 	std::optional<uint8_t> originalByte;
 	size_t frequency;
-	std::shared_ptr<Node> left, right;
+	HuffmanTreeNodePtr left, right;
 };
 
-using NodePtr = std::shared_ptr<Node>;
-using HuffmanEncodingMap = std::unordered_map<uint8_t, HuffmanEncoded>;
+// A mapping between the original bytes and the Huffman Coding codewords
+using PrefixFreeBinCode = std::unordered_map<uint8_t, EncodedByte>;
 
 class HuffmanTree {
 public:
-	HuffmanTree(const std::string& srcPath) {
+	HuffmanTree() {}
+	
+	// Build Huffman Tree from a source file
+	HuffmanTree(const std::string& srcFilePath) {
 		// Create RAII file handle
-		InputFileRAII scopedFile(srcPath);
-		std::ifstream& handle = scopedFile.get();
+		InputFileRAII scopedSrcFile(srcFilePath);
+		std::ifstream& srcFile = scopedSrcFile.get();
+
+		// The extension of the source file will be compressed along with its content
+		char separator = ' ';
+		std::string srcFileExt = extension(srcFilePath) + separator;
 
 		// Temporary array to store frequencies
 		std::array<size_t, ALPHABET_SIZE> freqArr{ 0 };
 
-		// Get extension of the source file (it will be compressed along with the source 
-		// file content by being placed before it and separated from it with a space).
-		std::string ext = extension(srcPath) + ' ';
-
-		// Count characters in the source file extension
-		for (char c : ext) 
+		// Count frequencies of the characters in the file extension
+		for (char c : srcFileExt)
 			freqArr[c]++;
-		
-		uint8_t buf[BUFFER_SIZE]; // Buffer to read from the source file
-		do {
-			// Read a chunk of data from the source file
-			handle.read(reinterpret_cast<char*>(buf), BUFFER_SIZE);
-			// Get the number of bytes read in this chunk
-			std::streamsize bytesRead = handle.gcount();
 
-			// If no bytes were read, break loop
-			if (bytesRead == 0) break;
+		uint8_t srcBuffer[BUFFER_SIZE]; // Buffer to read chunks of data from the source file
+		std::streamsize bytesRead; // Number of bytes read in a chunk
 
-			// Count the frequencies of the bytes in this chunk
-			for (int i = 0; i < bytesRead; i++) {
-				freqArr[buf[i]]++;
-			}
-		} while (true);
+		while (true) {
+			srcFile.read(reinterpret_cast<char*>(srcBuffer), BUFFER_SIZE);
+			// Break loop if there is no more data to read
+			if ((bytesRead = srcFile.gcount()) == 0) break;
 
-		// Build tree leaves of the HuffmanTree with all bytes whose frequencies are > 0
-		for (int i = 0; i < ALPHABET_SIZE; i++) {
-			if (freqArr[i] == 0)
-				continue;
-
-			// Map new encoding with character 'i'
-			encodingMap.insert({ static_cast<uint8_t>(i), HuffmanEncoded(0, 0) });
-
-			// Insert new node ordered by frequency
-			std::vector<std::shared_ptr<Node>>::iterator iter = leaves.begin();
-			while (iter < leaves.end() && (*iter)->getFrequency() > freqArr[i]) {
-				iter++;
-			}
-			leaves.insert(iter, std::make_shared<Node>(Node(static_cast<uint8_t>(i), freqArr[i])));
+			// Count frequencies of the bytes in the chunk
+			for (int i = 0; i < bytesRead; i++)
+				freqArr[srcBuffer[i]]++;
 		}
-		buildMinHeap();
+
+		// Build Huffman Tree leaves, inserting them in a vector ordered by frequency
+		for (int i = 0; i < ALPHABET_SIZE; i++) {
+			if (freqArr[i] == 0) continue;
+
+			std::vector<HuffmanTreeNodePtr>::iterator iter = leaves.begin();
+			while (iter < leaves.end() && (*iter)->getFrequency() > freqArr[i]) iter++;
+			leaves.insert(iter, std::make_shared<HuffmanTreeNode>(HuffmanTreeNode(static_cast<uint8_t>(i), freqArr[i])));
+		}
+		buildMinHeapFromLeaves(); // Build Huffman Tree
+		buildEncodingDict(); // Set encoding and map byte values to its compressed codewords
 	}
 
-	HuffmanTree(std::vector<NodePtr>& _leaves) {
-		leaves = _leaves;
-
-		// Initialize encoding
-		for (NodePtr leaf : leaves) 
-			encodingMap.insert({ leaf->getOriginalByte(), HuffmanEncoded(0, 0) });
-
-		buildMinHeap();
+	// Build Huffman Tree from its leaves
+	HuffmanTree(std::vector<HuffmanTreeNodePtr>& _leaves)
+		: leaves(_leaves) {
+		buildMinHeapFromLeaves();
+		buildEncodingDict();
 	}
 
-	NodePtr getRoot() const {
-		return root;
-	}
+	HuffmanTreeNodePtr getRoot() const { return root; }
 
-	// Get map with each encoded characters indexed by its original form
-	HuffmanEncodingMap getEncodingMap() const {
-		return encodingMap;
-	}
+	// Get map indexing the Huffman Coding codewords with its original bytes
+	PrefixFreeBinCode getEncodingDict() const { return encodingDict; }
 
-	// Get total number of bytes in the original file (+ its extension and a ' ')
-	size_t getNumberOfBytes() const {
-		return root->getFrequency();
-	}
+	// Get total number of bytes that were encoded (source file content + source file extension + separator character)
+	size_t getNumberOfBytes() const { return root->getFrequency(); }
 
-	// Get frequency of the most frequent character in the original file
-	size_t getHigherFrequency() const {
-		return leaves.front()->getFrequency();
-	}
+	// Get frequency of the most frequent character
+	size_t getHigherFrequency() const { return leaves.front()->getFrequency(); }
 
-	// Get vector with all tree leaves
-	std::vector<NodePtr> getLeaves() const {
-		return leaves;
-	}
+	// Get all leaf nodes of the Huffman Tree in a vector
+	std::vector<HuffmanTreeNodePtr> getLeaves() const { return leaves; }
 
 private:
-	NodePtr root;
-	std::vector<NodePtr> leaves;
-	HuffmanEncodingMap encodingMap;
+	HuffmanTreeNodePtr root;
+	std::vector<HuffmanTreeNodePtr> leaves;
+	PrefixFreeBinCode encodingDict; // Mapping between the original bytes and the Huffman Coding codewords
 
-	void traverseToEncode(HuffmanEncoded tempEncoding, NodePtr currentNode) {
+	void setEncodings(EncodedByte encodedByte, HuffmanTreeNodePtr currentNode, uint8_t position) {
 		if (currentNode->isLeaf()) {
 			// Leaf node: Assign encoding mapping
-			encodingMap[currentNode->getOriginalByte()] = tempEncoding;
-		}
-		else {
+			encodingDict.insert({ currentNode->getOriginalByte(), encodedByte });
+		} else {
 			// Internal node: Traverse left and right subtrees
-			tempEncoding.bitCount++;
-			tempEncoding.encodedByte <<= 1;
-
-			traverseToEncode(tempEncoding, currentNode->getLeft());
-			tempEncoding.encodedByte |= 1;
-			traverseToEncode(tempEncoding, currentNode->getRight());
-		}
-	}
-
-	void setEncoding() {
-		// Make all encodings prefixed by '0'
-		traverseToEncode(HuffmanEncoded(0, 1), root->getLeft());
-		// Make all encodings prefixed by '1'
-		traverseToEncode(HuffmanEncoded(1, 1), root->getRight());
-	}
-
-	void buildMinHeap() {
-		// Temporary node vector to build min-heap
-		std::vector<NodePtr> temp(leaves);
-
-		while (temp.size() > 1) {
-			NodePtr left = temp.back();
-			temp.pop_back();
-			NodePtr right = temp.back();
-			temp.pop_back();
-
-			NodePtr newInternal = std::make_shared<Node>(Node(left, right));
-
-			// Insert new internal node ordered in the vector
-			std::vector<NodePtr>::iterator iter = temp.begin();
-			while (iter < temp.end() && (*iter)->getFrequency() > newInternal->getFrequency()) {
-				iter++;
+			if (position == 0) {
+				position = 0x80;
+				encodedByte.codeword.emplace_back(0);
 			}
-			temp.insert(iter, newInternal);
+			encodedByte.numberOfBits++;
+			setEncodings(encodedByte, currentNode->getLeft(), position / 2);
+			encodedByte.codeword[encodedByte.codeword.size() - 1] |= position;
+			setEncodings(encodedByte, currentNode->getRight(), position / 2);
 		}
-		root = temp.front();
+	}
 
-		// Map chars to its encoded forms
-		setEncoding();
+	void buildEncodingDict() {
+		uint8_t initialPosition = 0x40; // 01000000 (base 2)
+
+		// Make all encodings prefixed by '0'
+		Codeword initialCodeword;
+		initialCodeword.emplace_back(0);
+		setEncodings(EncodedByte(initialCodeword, 1), root->getLeft(), initialPosition);
+
+		// Make all encodings prefixed by '1'
+		initialCodeword[0] |= 0x80;
+		setEncodings(EncodedByte(initialCodeword, 1), root->getRight(), initialPosition);
+	}
+
+	void buildMinHeapFromLeaves() {
+		std::vector<HuffmanTreeNodePtr> tempLeaves(leaves);
+
+		while (tempLeaves.size() > 1) {
+			HuffmanTreeNodePtr left = tempLeaves.back();
+			tempLeaves.pop_back();
+			HuffmanTreeNodePtr right = tempLeaves.back();
+			tempLeaves.pop_back();
+
+			HuffmanTreeNodePtr newInternalNode = std::make_shared<HuffmanTreeNode>(HuffmanTreeNode(left, right));
+
+			std::vector<HuffmanTreeNodePtr>::iterator iter = tempLeaves.begin();
+			while (iter < tempLeaves.end() && (*iter)->getFrequency() > newInternalNode->getFrequency()) iter++;
+			tempLeaves.insert(iter, newInternalNode);
+		}
+		root = tempLeaves.front();
 	}
 };

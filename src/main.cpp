@@ -17,8 +17,8 @@ int main(int argc, char** argv) {
 
 	// Check if input file must be compressed or decompressed
 	if (is_hzip(srcPath)) {
-		// If the input file has a ".hzip" extension, it will be decompressed. The decompressed
-		// file will be created in the same directory as the input file.
+		// If the input file has a ".hzip" extension, it will be decompressed
+		// The decompressed file will be created in the same directory as the input file
 		try {
 			unzip(srcPath);
 		} catch (std::exception& e) {
@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
 		}
 	} else {
 		// If the input file doesn't have a ".hzip" extention, it will be compressed into a 
-		// ".hzip" file, which will be created in the same directory as the input file.
+		// ".hzip" file, which will be created in the same directory as the input file
 		try {
 			zip(srcPath);
 		} catch (std::exception& e) {

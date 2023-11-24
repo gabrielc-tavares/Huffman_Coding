@@ -33,3 +33,7 @@ std::string extension(const std::string& path) {
 	// If the file path doesn't contain an explicit extension, throw an exception
 	throw std::runtime_error("Error: Invalid file path format (extension must be explicit).");
 }
+
+std::string setCompressedFilePath(const std::string& originalFilePath) {
+	return removeExtension(originalFilePath) + ".hzip";
+}

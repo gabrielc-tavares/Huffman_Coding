@@ -1,12 +1,21 @@
 #include <iostream>
 #include "pathmgr.h"
 
-bool isHzip(const std::string& path) {
-	return getExtension(path) == "hzip";
+bool isHzip(const std::string& filePath) {
+	std::string ext;
+
+	try {
+		ext = getExtension(filePath);
+	}
+	catch (std::runtime_error& e) {
+		throw;
+	}
+
+	return ext == "hzip";
 }
 
-std::string removeExtension(const std::string& path) {
-	std::string stem(path);
+std::string removeExtension(const std::string& filePath) {
+	std::string stem(filePath);
 
 	while (!stem.empty()) {
 		if (stem.back() == '.') {
@@ -19,8 +28,8 @@ std::string removeExtension(const std::string& path) {
 	throw std::runtime_error("Error: Invalid file path format (extension must be explicit).");
 }
 
-std::string getExtension(const std::string& path) {
-	std::string temp(path);
+std::string getExtension(const std::string& filePath) {
+	std::string temp(filePath);
 	std::string ext;
 
 	while (!temp.empty() && temp.back() != '/') {
@@ -35,5 +44,13 @@ std::string getExtension(const std::string& path) {
 }
 
 std::string setCompressedFilePath(const std::string& originalFilePath) {
-	return removeExtension(originalFilePath) + ".hzip";
+	std::string pathWithoutExt;
+
+	try {
+		pathWithoutExt = removeExtension(originalFilePath);
+	} catch (std::runtime_error& e) {
+		throw;
+	}
+
+	return pathWithoutExt + ".hzip";
 }

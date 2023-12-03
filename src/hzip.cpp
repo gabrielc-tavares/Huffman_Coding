@@ -8,7 +8,6 @@
  * base 2 of the input, divided by 8.
  *
  * @param n The unsigned integer value for which to calculate the byte size.
- *
  * @return The minimum number of bytes required to represent the input value.
  *
  * @note The result is cast to uint8_t for compactness.
@@ -123,133 +122,6 @@ void writeHuffmanMetadata(std::ofstream& destFile, const HuffmanTree& huffmanTre
 }
 
 /**
- * @brief Compresses the content of the given file using Huffman coding.
- *
- * This function compresses the content of the source file located at `srcFilePath`
- * using Huffman coding. The compressed file is written to a destination file, that 
- * will be created in the same directory and with the same name of the source file,
- * but with a '.hzip' extension.
- *
- * @param srcFilePath The path to the source file to be compressed.
- *
- * @throws std::exception if an error occurs during the compression process.
- *
- * @details
- * The compression process involves the following steps:
- * - Building a Huffman Tree based on the frequency of each byte in the source file.
- * - Writing Huffman coding metadata at the beginning of the compressed file.
- * - Encoding the content of the source file using Huffman coding and writing it to the compressed file.
- *
- * @note This function assumes that the source file is accessible and properly formatted.
- * @note The function does not handle file stream errors or exceptions.
- */
-void zip(const std::string& srcFilePath) {
-	// Build HuffmanTree from source file
-	HuffmanTree huffmanTree;
-	try {
-		huffmanTree = HuffmanTree(srcFilePath);
-	} catch (std::exception& e) {
-		// Rethrow exception raised while building Huffman Tree to be handled by the main
-		throw;
-	}
-
-	// Create RAII handle for input file
-	InputFileRAII scopedInputFile(srcFilePath);
-	std::ifstream& srcFile = scopedInputFile.get();
-
-	// Set the destination file path for the compressed file
-	std::string destFilePath = setCompressedFilePath(srcFilePath);
-
-	// Create RAII handle for output file
-	OutputFileRAII scopedOutputFile(destFilePath);
-	std::ofstream& destFile = scopedOutputFile.get();
-
-	// Write Huffman metadata at the beginning of the compressed file
-	writeHuffmanMetadata(destFile, huffmanTree);
-
-	// Get the Huffman encoding dictionary
-	PrefixFreeBinCode encodingDict = huffmanTree.getEncodingDict();
-
-	// Buffers for reading from the source file and writing to the destination file
-	uint8_t srcBuffer[BUFFER_SIZE], destBuffer[BUFFER_SIZE] = { 0 };
-
-	// The number of bits in the destination buffer
-	const int destBufferNumBits = BUFFER_SIZE * 8;
-	int destBufferFreeBits = destBufferNumBits;
-
-	// Get source file extension, that will be compressed along with its content
-	std::string srcFileExt;
-	try {
-		srcFileExt = getExtension(srcFilePath) + ' ';
-	} catch (std::exception& e) {
-		throw;
-	}
-
-	// Put source file extension at the beginning of the source buffer to be compressed
-	size_t srcFileExtLen = srcFileExt.size();
-	for (int i = 0; i < srcFileExtLen; i++)
-		srcBuffer[i] = static_cast<uint8_t>(srcFileExt[i]);
-
-	// Read a chunk of data from the input file
-	srcFile.read(reinterpret_cast<char*>(srcBuffer + srcFileExtLen), BUFFER_SIZE - srcFileExtLen);
-	std::streamsize bytesRead = bytesRead = srcFile.gcount() + srcFileExtLen;
-
-	do {
-		// Iterate through each byte in the source buffer
-		for (int i = 0; i < bytesRead; i++) {
-			// Get the Huffman-encoded representation of the byte
-			EncodedByte encodedByte = encodingDict[srcBuffer[i]];
-
-			int bitsWritten = destBufferNumBits - destBufferFreeBits;
-			int destBufferIndex = bitsWritten / 8;
-			int shr = bitsWritten % 8;
-
-			// Update the number of free bits in the destination buffer
-			destBufferFreeBits -= encodedByte.numberOfBits;
-			// Shift the bits of the encoded byte to the right
-			shiftRight(encodedByte, shr);
-
-			// If the destination buffer is full, write it to the compressed file
-			if (destBufferFreeBits <= 0) {
-				destBuffer[destBufferIndex] |= encodedByte.codeword[0];
-				destFile.write(reinterpret_cast<char*>(destBuffer), destBufferIndex + 1);
-
-				// Reset the destination buffer
-				memset(destBuffer, 0, BUFFER_SIZE * sizeof(*destBuffer));
-				destBufferIndex = 0;
-				destBufferFreeBits = destBufferNumBits;
-
-				// If there are no more bits in the encoded byte, go to the next iteration
-				if (encodedByte.codeword.size() == 1) 
-					continue;
-
-				// Otherwise, remove the first byte from the encoded byte (already written) and 
-				// process its remaining bits
-				encodedByte.codeword.erase(encodedByte.codeword.begin());
-				encodedByte.numberOfBits -= 8;
-				destBufferFreeBits -= encodedByte.numberOfBits;
-			}
-			// Write each bit of the encoded byte to the destination buffer
-			for (auto iter = encodedByte.codeword.begin(); iter != encodedByte.codeword.end(); ++iter) {
-				destBuffer[destBufferIndex] |= *iter;
-				destBufferIndex++;
-			}
-		}
-		// Read another chunk of data from the input file
-		srcFile.read(reinterpret_cast<char*>(srcBuffer), BUFFER_SIZE);
-		bytesRead = srcFile.gcount();
-	} while (bytesRead > 0);
-
-	// If there are remaining bits in the destination buffer, write them to the compressed file
-	if (destBufferFreeBits < destBufferNumBits) {
-		int remainingBits = destBufferNumBits - destBufferFreeBits;
-		int remainingBytes = (remainingBits + 7) / 8;
-		destFile.write(reinterpret_cast<char*>(destBuffer), remainingBytes);
-	}
-	std::cout << "File compressed successfully" << std::endl;
-}
-
-/**
  * @brief Read Huffman coding metadata from the beginning of a compressed file.
  *
  * This function reads Huffman coding metadata from the beginning of the provided
@@ -258,14 +130,13 @@ void zip(const std::string& srcFilePath) {
  * with their frequencies.
  *
  * @param compressedFile An input file stream representing the compressed file.
- *
  * @return A dynamically allocated array containing the Huffman coding metadata.
  *
  * @details
  * The function reads the first two bytes from the compressed file, which represent:
  * - byte 0: An integer n representing the number of codewords (distinct bytes).
  * - byte 1: An integer f representing the number of bytes required to store frequencies.
- *
+ * 
  * The size of the dynamically allocated array is determined based on the values
  * read from the file. The remaining bytes (n*(f+1)) are then read and stored in
  * the array, and it represents each distinct byte from the original file along 
@@ -309,7 +180,6 @@ uint8_t* readHuffmanMetadata(std::ifstream& compressedFile) {
  * with their frequencies.
  *
  * @param huffmanMetadata A dynamically allocated array containing Huffman coding metadata.
- *
  * @return A vector of Huffman tree leaves constructed from the provided metadata.
  *
  * @details
@@ -350,31 +220,114 @@ std::vector<HuffmanTreeNodePtr> buildLeavesFromMetadata(uint8_t* huffmanMetadata
 	return leaves;
 }
 
-/**
- * @brief Decompress the given file using Huffman coding.
- *
- * This function decompresses a file that was previously compressed using Huffman
- * coding. It reads the compressed file, extracts Huffman coding metadata, builds
- * Huffman tree, and then decodes the original file content.
- *
- * @param srcFilePath The path to the compressed file to be decompressed.
- *
- * @throws std::runtime_error if there is an issue during the decompression process.
- *
- * @details
- * The function starts by opening the compressed file and creating an RAII handle for input.
- * Huffman coding metadata is read from the compressed file, and Huffman tree leaves
- * are constructed. The Huffman tree is then built using these leaves.
- * The function proceeds to read the encoded bytes from the compressed file, traverse
- * the Huffman tree, and decode the original file content. The decompressed file is
- * created, and the content is written to it.
- * The decompressed file is created in the same directory and with the same name
- * as the compressed file, but with the original file extension (that was compressed along
- * with its data).
- *
- * @note This function assumes that the compressed file contains valid Huffman coding metadata.
- * @note The function does not handle file stream errors or exceptions.
- */
+void zip(const std::string& srcFilePath) {
+	// Build HuffmanTree from source file
+	HuffmanTree huffmanTree;
+	try {
+		huffmanTree = HuffmanTree(srcFilePath);
+	}
+	catch (std::exception& e) {
+		// Rethrow exception raised while building Huffman Tree to be handled by the main
+		throw;
+	}
+
+	// Create RAII handle for input file
+	InputFileRAII scopedInputFile(srcFilePath);
+	std::ifstream& srcFile = scopedInputFile.get();
+
+	// Set the destination file path for the compressed file
+	std::string destFilePath = setCompressedFilePath(srcFilePath);
+
+	// Create RAII handle for output file
+	OutputFileRAII scopedOutputFile(destFilePath);
+	std::ofstream& destFile = scopedOutputFile.get();
+
+	// Write Huffman metadata at the beginning of the compressed file
+	writeHuffmanMetadata(destFile, huffmanTree);
+
+	// Get the Huffman encoding dictionary
+	PrefixFreeBinCode encodingDict = huffmanTree.getEncodingDict();
+
+	// Buffers for reading from the source file and writing to the destination file
+	uint8_t srcBuffer[BUFFER_SIZE], destBuffer[BUFFER_SIZE] = { 0 };
+
+	// The number of bits in the destination buffer
+	const int destBufferNumBits = BUFFER_SIZE * 8;
+	int destBufferFreeBits = destBufferNumBits;
+
+	// Get source file extension, that will be compressed along with its content
+	std::string srcFileExt;
+	try {
+		srcFileExt = getExtension(srcFilePath) + ' ';
+	}
+	catch (std::exception& e) {
+		throw;
+	}
+
+	// Put source file extension at the beginning of the source buffer to be compressed
+	size_t srcFileExtLen = srcFileExt.size();
+	for (int i = 0; i < srcFileExtLen; i++)
+		srcBuffer[i] = static_cast<uint8_t>(srcFileExt[i]);
+
+	// Read a chunk of data from the input file
+	srcFile.read(reinterpret_cast<char*>(srcBuffer + srcFileExtLen), BUFFER_SIZE - srcFileExtLen);
+	std::streamsize bytesRead = bytesRead = srcFile.gcount() + srcFileExtLen;
+
+	do {
+		// Iterate through each byte in the source buffer
+		for (int i = 0; i < bytesRead; i++) {
+			// Get the Huffman-encoded representation of the byte
+			EncodedByte encodedByte = encodingDict[srcBuffer[i]];
+
+			int bitsWritten = destBufferNumBits - destBufferFreeBits;
+			int destBufferIndex = bitsWritten / 8;
+			int shr = bitsWritten % 8;
+
+			// Update the number of free bits in the destination buffer
+			destBufferFreeBits -= encodedByte.numberOfBits;
+			// Shift the bits of the encoded byte to the right
+			shiftRight(encodedByte, shr);
+
+			// If the destination buffer is full, write it to the compressed file
+			if (destBufferFreeBits <= 0) {
+				destBuffer[destBufferIndex] |= encodedByte.codeword[0];
+				destFile.write(reinterpret_cast<char*>(destBuffer), destBufferIndex + 1);
+
+				// Reset the destination buffer
+				memset(destBuffer, 0, BUFFER_SIZE * sizeof(*destBuffer));
+				destBufferIndex = 0;
+				destBufferFreeBits = destBufferNumBits;
+
+				// If there are no more bits in the encoded byte, go to the next iteration
+				if (encodedByte.codeword.size() == 1)
+					continue;
+
+				// Otherwise, remove the first byte from the encoded byte (already written) and 
+				// process its remaining bits
+				encodedByte.codeword.erase(encodedByte.codeword.begin());
+				encodedByte.numberOfBits -= 8;
+				destBufferFreeBits -= encodedByte.numberOfBits;
+			}
+			// Write each bit of the encoded byte to the destination buffer
+			for (auto iter = encodedByte.codeword.begin(); iter != encodedByte.codeword.end(); ++iter) {
+				destBuffer[destBufferIndex] |= *iter;
+				destBufferIndex++;
+			}
+		}
+		// Read another chunk of data from the input file
+		srcFile.read(reinterpret_cast<char*>(srcBuffer), BUFFER_SIZE);
+		bytesRead = srcFile.gcount();
+	} while (bytesRead > 0);
+
+	// If there are remaining bits in the destination buffer, write them to the compressed file
+	if (destBufferFreeBits < destBufferNumBits) {
+		int remainingBits = destBufferNumBits - destBufferFreeBits;
+		int remainingBytes = (remainingBits + 7) / 8;
+		destFile.write(reinterpret_cast<char*>(destBuffer), remainingBytes);
+	}
+	std::cout << "File compressed successfully" << std::endl;
+}
+
 void unzip(const std::string& srcFilePath) {
 	// Create RAII handle for input file
 	InputFileRAII scopedInputFile(srcFilePath);
@@ -421,9 +374,9 @@ void unzip(const std::string& srcFilePath) {
 		do {
 			// Traverse Huffman Tree based on the bit value
 			if ((srcByte & mask) == 0) 
-				nodePtr = nodePtr->getLeft();
+				nodePtr = nodePtr->getLeftSubtree();
 			else 
-				nodePtr = nodePtr->getRight();
+				nodePtr = nodePtr->getRightSubtree();
 
 			// Check if the current node is a leaf (contains an original byte)
 			if (nodePtr->isLeaf()) {
@@ -453,9 +406,9 @@ void unzip(const std::string& srcFilePath) {
 						while (mask != 0) {
 							// Traverse Huffman Tree based on the bit value
 							if ((srcByte & mask) == 0) 
-								nodePtr = nodePtr->getLeft();
+								nodePtr = nodePtr->getLeftSubtree();
 							else 
-								nodePtr = nodePtr->getRight();
+								nodePtr = nodePtr->getRightSubtree();
 							
 							// Check if the current node is a leaf (contains an original byte)
 							if (nodePtr->isLeaf()) {

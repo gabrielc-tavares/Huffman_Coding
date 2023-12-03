@@ -1,0 +1,7 @@
+# ninja log v5
+1	10	0	clean	8c45b54705a541e8
+7	15	0	clean	8c45b54705a541e8
+5	626	7233358379585421	CMakeFiles/Huffman.dir/src/pathmgr.cpp.obj	68d8c853fed50373
+12	791	7233358381225782	CMakeFiles/Huffman.dir/src/main.cpp.obj	968ead5eb761e2a2
+9	852	7233358381831647	CMakeFiles/Huffman.dir/src/hzip.cpp.obj	8a63a815c026f79c
+853	1162	7233358384759612	C:/Users/gabri/Projects/C++/huffman_coding/build/Huffman.exe	d9bac41a0f09eda1

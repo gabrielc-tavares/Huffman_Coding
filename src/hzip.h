@@ -2,8 +2,8 @@
 
 #include "huffman_tree.hpp"
 
-// Compress the file in the given path
+// Compresses the content of the given file using Huffman coding.
 void zip(const std::string& srcFilePath);
 
-// Decompress the file in the given path
+// Decompress the given file using Huffman coding.
 void unzip(const std::string& srcFilePath);

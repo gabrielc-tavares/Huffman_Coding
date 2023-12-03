@@ -1,0 +1,3 @@
+C:/Users/gabri/Projects/C++/huffman_coding/build/debug/CMakeFiles/Huffman.dir
+C:/Users/gabri/Projects/C++/huffman_coding/build/debug/CMakeFiles/edit_cache.dir
+C:/Users/gabri/Projects/C++/huffman_coding/build/debug/CMakeFiles/rebuild_cache.dir

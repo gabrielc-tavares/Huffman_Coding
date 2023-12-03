@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
 	}
 
 	// Check if input file must be compressed or decompressed
-	if (is_hzip(srcPath)) {
+	if (isHzip(srcPath)) {
 		// If the input file has a ".hzip" extension, it will be decompressed
 		// The decompressed file will be created in the same directory as the input file
 		try {

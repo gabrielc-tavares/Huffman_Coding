@@ -1,8 +1,8 @@
 #include <iostream>
 #include "pathmgr.h"
 
-bool is_hzip(const std::string& path) {
-	return extension(path) == "hzip";
+bool isHzip(const std::string& path) {
+	return getExtension(path) == "hzip";
 }
 
 std::string removeExtension(const std::string& path) {
@@ -19,7 +19,7 @@ std::string removeExtension(const std::string& path) {
 	throw std::runtime_error("Error: Invalid file path format (extension must be explicit).");
 }
 
-std::string extension(const std::string& path) {
+std::string getExtension(const std::string& path) {
 	std::string temp(path);
 	std::string ext;
 

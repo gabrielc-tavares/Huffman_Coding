@@ -1,5 +1,4 @@
 ﻿#include "hzip.h"
-#include <cmath>
 
 /**
  * @brief Calculate the minimum number of bytes required to represent an unsigned integer.
@@ -181,7 +180,7 @@ void zip(const std::string& srcFilePath) {
 	// Get source file extension, that will be compressed along with its content
 	std::string srcFileExt;
 	try {
-		srcFileExt = extension(srcFilePath) + ' ';
+		srcFileExt = getExtension(srcFilePath) + ' ';
 	} catch (std::exception& e) {
 		throw;
 	}
@@ -276,7 +275,7 @@ void zip(const std::string& srcFilePath) {
  * @note This function assumes that the compressed file contains valid Huffman coding metadata.
  * @note The function does not handle file stream errors or exceptions.
  */
-uint8_t* getMetadataFromCompressedFile(std::ifstream& compressedFile) {
+uint8_t* readHuffmanMetadata(std::ifstream& compressedFile) {
 	// Read the first two bytes from the compressed file
 	uint8_t auxBuffer[2];
 	compressedFile.read(reinterpret_cast<char*>(auxBuffer), 2);
@@ -352,7 +351,7 @@ std::vector<HuffmanTreeNodePtr> buildLeavesFromMetadata(uint8_t* huffmanMetadata
 }
 
 /**
- * @brief Decompress a file using Huffman coding.
+ * @brief Decompress the given file using Huffman coding.
  *
  * This function decompresses a file that was previously compressed using Huffman
  * coding. It reads the compressed file, extracts Huffman coding metadata, builds
@@ -385,7 +384,7 @@ void unzip(const std::string& srcFilePath) {
 	std::string destPath = removeExtension(srcFilePath) + '.';
 
 	// Get Huffman coding metadata from the compressed file
-	uint8_t* huffmanMetadata = getMetadataFromCompressedFile(srcFile);
+	uint8_t* huffmanMetadata = readHuffmanMetadata(srcFile);
 	
 	// Make Huffman tree leaves from the Huffman metadata
 	std::vector<HuffmanTreeNodePtr> leaves = buildLeavesFromMetadata(huffmanMetadata);
